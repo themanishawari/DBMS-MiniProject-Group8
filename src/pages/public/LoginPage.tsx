@@ -1,19 +1,24 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { GraduationCap, Lock, Mail, Shield, User as UserIcon, Wrench } from 'lucide-react';
+import { GraduationCap, Lock, Mail } from 'lucide-react';
 import { Button } from '../../components/common/Button';
 import { useAuth } from '../../context/AuthContext';
 import { Role } from '../../types';
 
 export const LoginPage: React.FC = () => {
-  const { loginWithCredentials, loginAsDemoUser } = useAuth();
+  const { loginWithCredentials, loginAsDemoUser, isLoading: ctxLoading } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<Role>('student');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const redirectForRole = (role: Role) => {
+    if (role === 'admin') navigate('/admin/dashboard');
+    else if (role === 'staff') navigate('/staff/dashboard');
+    else navigate('/student/dashboard');
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,24 +27,43 @@ export const LoginPage: React.FC = () => {
       setError('Please enter your institutional email.');
       return;
     }
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      await loginWithCredentials(email, role);
-      if (role === 'admin') navigate('/admin/dashboard');
-      else if (role === 'staff') navigate('/staff/dashboard');
-      else navigate('/student/dashboard');
+      await loginWithCredentials(email, password);
+      // Retrieve the role from the stored user after login
+      const saved = localStorage.getItem('ccms_session_user');
+      if (saved) {
+        const user = JSON.parse(saved);
+        redirectForRole(user.role as Role);
+      } else {
+        navigate('/student/dashboard');
+      }
     } catch (err: any) {
-      setError(err.message || 'Login failed.');
+      setError(err.message || 'Login failed. Check your credentials.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleQuickDemo = (demoEmail: string, demoRole: Role, path: string) => {
-    loginAsDemoUser(demoEmail);
-    navigate(path);
+  const handleQuickDemo = async (demoEmail: string, path: string) => {
+    setError(null);
+    setIsLoading(true);
+    try {
+      await loginAsDemoUser(demoEmail, 'password123');
+      navigate(path);
+    } catch (err: any) {
+      setError(err.message || 'Demo login failed. Ensure the backend is running.');
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  const busy = isLoading || ctxLoading;
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 font-sans">
@@ -67,26 +91,6 @@ export const LoginPage: React.FC = () => {
           )}
 
           <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Select Role</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['student', 'staff', 'admin'] as Role[]).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setRole(r)}
-                    className={`py-2 text-xs font-medium rounded-lg border capitalize transition-colors cursor-pointer ${
-                      role === r
-                        ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Institutional Email
@@ -117,23 +121,22 @@ export const LoginPage: React.FC = () => {
               </div>
             </div>
 
-            <Button type="submit" size="md" className="w-full font-semibold" isLoading={isLoading}>
-              Sign In to {role.toUpperCase()} Portal
+            <Button type="submit" size="md" className="w-full font-semibold" isLoading={busy}>
+              Sign In
             </Button>
           </form>
 
           {/* Quick Demo Credentials Box */}
           <div className="mt-6 pt-6 border-t border-slate-200">
             <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider text-center mb-3">
-              One-Click Demo Accounts
+              One-Click Demo Accounts (password: password123)
             </p>
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={() =>
-                  handleQuickDemo('rahul.sharma@college.edu', 'student', '/student/dashboard')
-                }
-                className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left flex items-center justify-between transition-colors cursor-pointer"
+                disabled={busy}
+                onClick={() => handleQuickDemo('rahul.sharma@college.edu', '/student/dashboard')}
+                className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50"
               >
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold">
@@ -151,8 +154,9 @@ export const LoginPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => handleQuickDemo('it.staff@college.edu', 'staff', '/staff/dashboard')}
-                className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left flex items-center justify-between transition-colors cursor-pointer"
+                disabled={busy}
+                onClick={() => handleQuickDemo('it.staff@college.edu', '/staff/dashboard')}
+                className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50"
               >
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">
@@ -170,8 +174,9 @@ export const LoginPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => handleQuickDemo('admin@college.edu', 'admin', '/admin/dashboard')}
-                className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left flex items-center justify-between transition-colors cursor-pointer"
+                disabled={busy}
+                onClick={() => handleQuickDemo('admin@college.edu', '/admin/dashboard')}
+                className="w-full p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50"
               >
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold">

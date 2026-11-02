@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { GraduationCap, Mail, Phone, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { GraduationCap, Lock, Mail, Phone, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { Button } from '../../components/common/Button';
 import { useAuth } from '../../context/AuthContext';
 
 export const RegisterPage: React.FC = () => {
-  const { registerStudent } = useAuth();
+  const { registerStudent, isLoading: ctxLoading } = useAuth();
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [studentId, setStudentId] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,10 +25,18 @@ export const RegisterPage: React.FC = () => {
       setError('Name, college email, and student roll number are required.');
       return;
     }
+    if (password && password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    if (password && password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      await registerStudent(name, email, studentId, phone);
+      await registerStudent(name, email, studentId, phone || undefined, password || undefined);
       navigate('/student/dashboard');
     } catch (err: any) {
       setError(err.message || 'Registration failed.');
@@ -34,6 +44,8 @@ export const RegisterPage: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  const busy = isLoading || ctxLoading;
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 font-sans">
@@ -125,7 +137,41 @@ export const RegisterPage: React.FC = () => {
               </div>
             </div>
 
-            <Button type="submit" size="md" className="w-full font-semibold" isLoading={isLoading}>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Password <span className="text-slate-400 font-normal">(leave blank for default: password123)</span>
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Min. 6 characters"
+                  className="w-full text-xs bg-white border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-slate-800 focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            {password && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter password"
+                    className="w-full text-xs bg-white border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-slate-800 focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            <Button type="submit" size="md" className="w-full font-semibold" isLoading={busy}>
               Complete Enrollment
             </Button>
           </form>
