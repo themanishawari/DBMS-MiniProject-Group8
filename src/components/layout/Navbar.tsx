@@ -2,13 +2,10 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Bell,
-  CheckCircle,
   GraduationCap,
   LogOut,
-  RefreshCw,
   RotateCcw,
   Shield,
-  User as UserIcon,
   Wrench,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -98,9 +95,8 @@ export const Navbar: React.FC = () => {
                 <div className="space-y-1">
                   <button
                     onClick={() => {
-                      loginAsDemoUser('student');
+                      loginAsDemoUser('rahul.sharma@college.edu').then(() => navigate('/student/dashboard'));
                       setShowRoleSwitcher(false);
-                      navigate('/student/dashboard');
                     }}
                     className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between hover:bg-slate-700 cursor-pointer ${
                       currentUser.role === 'student' ? 'bg-indigo-600/30 text-indigo-300 font-semibold' : ''
@@ -115,9 +111,8 @@ export const Navbar: React.FC = () => {
 
                   <button
                     onClick={() => {
-                      loginAsDemoUser('it.staff@college.edu');
+                      loginAsDemoUser('it.staff@college.edu').then(() => navigate('/staff/dashboard'));
                       setShowRoleSwitcher(false);
-                      navigate('/staff/dashboard');
                     }}
                     className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between hover:bg-slate-700 cursor-pointer ${
                       currentUser.email === 'it.staff@college.edu'
@@ -134,9 +129,8 @@ export const Navbar: React.FC = () => {
 
                   <button
                     onClick={() => {
-                      loginAsDemoUser('maint.staff@college.edu');
+                      loginAsDemoUser('maint.staff@college.edu').then(() => navigate('/staff/dashboard'));
                       setShowRoleSwitcher(false);
-                      navigate('/staff/dashboard');
                     }}
                     className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between hover:bg-slate-700 cursor-pointer ${
                       currentUser.email === 'maint.staff@college.edu'
@@ -153,9 +147,8 @@ export const Navbar: React.FC = () => {
 
                   <button
                     onClick={() => {
-                      loginAsDemoUser('admin');
+                      loginAsDemoUser('admin@college.edu').then(() => navigate('/admin/dashboard'));
                       setShowRoleSwitcher(false);
-                      navigate('/admin/dashboard');
                     }}
                     className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between hover:bg-slate-700 cursor-pointer ${
                       currentUser.role === 'admin' ? 'bg-indigo-600/30 text-indigo-300 font-semibold' : ''

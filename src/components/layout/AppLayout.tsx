@@ -1,10 +1,18 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { Footer } from './Footer';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 
 export const AppLayout: React.FC = () => {
+  const { currentUser } = useAuth();
+
+  // Guard: redirect unauthenticated users to the login page
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       <Navbar />
@@ -18,3 +26,4 @@ export const AppLayout: React.FC = () => {
     </div>
   );
 };
+

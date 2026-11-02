@@ -1,14 +1,16 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { INITIAL_USERS } from '../data/initialSeed';
-import { complaintRepository } from '../repositories';
 import { Role, User } from '../types';
 
+const API_BASE = ((import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:5000/api/v1') as string;
+const TOKEN_KEY = 'ccms_auth_token';
+const SESSION_USER_KEY = 'ccms_session_user';
+
 interface AuthContextType {
-  currentUser: User;
+  currentUser: User | null;
   allUsers: User[];
-  loginAsDemoUser: (roleOrEmail: string) => void;
-  loginWithCredentials: (email: string, role: Role) => Promise<boolean>;
-  registerStudent: (name: string, email: string, studentId: string, phone?: string) => Promise<User>;
+  loginWithCredentials: (email: string, password: string) => Promise<boolean>;
+  loginAsDemoUser: (email: string, password?: string) => Promise<void>;
+  registerStudent: (name: string, email: string, studentId: string, phone?: string, password?: string) => Promise<User>;
   updateProfile: (updates: Partial<User>) => Promise<User>;
   logout: () => void;
   isLoading: boolean;
@@ -16,106 +18,150 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Default to student for instant exploratory testing
-  const [currentUser, setCurrentUser] = useState<User>(() => {
-    const saved = localStorage.getItem('ccms_session_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        // Fallback
-      }
-    }
-    return INITIAL_USERS[0]; // Rahul Sharma (Student)
-  });
-
-  const [allUsers, setAllUsers] = useState<User[]>(INITIAL_USERS);
-  const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    const loadUsers = async () => {
-      try {
-        const users = await complaintRepository.getUsers();
-        setAllUsers(users);
-      } catch (err) {
-        console.error('Failed to load users:', err);
-      }
-    };
-    loadUsers();
-  }, []);
-
-  const loginAsDemoUser = (roleOrEmail: string) => {
-    let found = allUsers.find((u) => u.email.toLowerCase() === roleOrEmail.toLowerCase());
-    if (!found) {
-      found = allUsers.find((u) => u.role === roleOrEmail);
-    }
-    if (!found) {
-      found = INITIAL_USERS[0];
-    }
-    setCurrentUser(found);
-    localStorage.setItem('ccms_session_user', JSON.stringify(found));
+// ---------------------------------------------------------------------------
+// Helper: make an authenticated fetch to the backend
+// ---------------------------------------------------------------------------
+async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers as Record<string, string>),
   };
 
-  const loginWithCredentials = async (email: string, role: Role): Promise<boolean> => {
+  const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+
+  if (!res.ok) {
+    let msg = `API Error ${res.status}`;
+    try {
+      const err = await res.json();
+      msg = err.message || err.detail || msg;
+    } catch { /* non-JSON */ }
+    throw new Error(msg);
+  }
+
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Restore user from session if present (avoids flicker on page refresh)
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem(SESSION_USER_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Persist current user for page-refresh resilience
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem(SESSION_USER_KEY, JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem(SESSION_USER_KEY);
+    }
+  }, [currentUser]);
+
+  // Load the full user directory once authenticated (used for staff/admin dropdowns)
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+
+    apiFetch<User[]>('/users')
+      .then((users) => setAllUsers(users))
+      .catch(() => { /* non-fatal */ });
+  }, [currentUser]);
+
+  // ---- Login with real credentials ------------------------------------------
+  const loginWithCredentials = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      const users = await complaintRepository.getUsers();
-      let match = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-
-      if (!match) {
-        // Demo mode convenience: create a mock session if not exists
-        match = {
-          id: `user-${Date.now()}`,
-          name: email.split('@')[0].replace('.', ' '),
-          email,
-          role,
-          isActive: true,
-          createdAt: new Date().toISOString(),
-        };
-      }
-
-      setCurrentUser(match);
-      localStorage.setItem('ccms_session_user', JSON.stringify(match));
+      const data = await apiFetch<{ success: boolean; token: string; user: User }>(
+        '/auth/login',
+        { method: 'POST', body: JSON.stringify({ email, password }) }
+      );
+      localStorage.setItem(TOKEN_KEY, data.token);
+      setCurrentUser(data.user);
       return true;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const registerStudent = async (name: string, email: string, studentId: string, phone?: string): Promise<User> => {
+  // ---- One-click demo login (auto-fills password 'password123') -------------
+  const loginAsDemoUser = async (email: string, password = 'password123'): Promise<void> => {
     setIsLoading(true);
     try {
-      const newUser = await complaintRepository.createUser(
-        {
-          name,
-          email,
-          role: 'student',
-          studentId,
-          phone,
-          isActive: true,
-        },
-        currentUser
+      const data = await apiFetch<{ success: boolean; token: string; user: User }>(
+        '/auth/login',
+        { method: 'POST', body: JSON.stringify({ email, password }) }
       );
-      setCurrentUser(newUser);
-      localStorage.setItem('ccms_session_user', JSON.stringify(newUser));
-      return newUser;
+      localStorage.setItem(TOKEN_KEY, data.token);
+      setCurrentUser(data.user);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // ---- Student self-registration --------------------------------------------
+  const registerStudent = async (
+    name: string,
+    email: string,
+    studentId: string,
+    phone?: string,
+    password?: string
+  ): Promise<User> => {
+    setIsLoading(true);
+    try {
+      const data = await apiFetch<{ success: boolean; token: string; user: User }>(
+        '/auth/register',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            email,
+            studentId,
+            phone: phone || undefined,
+            password: password || 'password123',
+          }),
+        }
+      );
+      localStorage.setItem(TOKEN_KEY, data.token);
+      setCurrentUser(data.user);
+      return data.user;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ---- Profile update -------------------------------------------------------
   const updateProfile = async (updates: Partial<User>): Promise<User> => {
-    const updated = await complaintRepository.updateUser(currentUser.id, updates, currentUser);
+    const updated = await apiFetch<User>('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        name: updates.name,
+        phone: updates.phone,
+        avatarUrl: updates.avatar,
+      }),
+    });
     setCurrentUser(updated);
-    localStorage.setItem('ccms_session_user', JSON.stringify(updated));
     return updated;
   };
 
+  // ---- Logout ---------------------------------------------------------------
   const logout = () => {
-    localStorage.removeItem('ccms_session_user');
-    // Return to student demo account
-    setCurrentUser(INITIAL_USERS[0]);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(SESSION_USER_KEY);
+    setCurrentUser(null);
+    setAllUsers([]);
   };
 
   return (
@@ -123,8 +169,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         currentUser,
         allUsers,
-        loginAsDemoUser,
         loginWithCredentials,
+        loginAsDemoUser,
         registerStudent,
         updateProfile,
         logout,
